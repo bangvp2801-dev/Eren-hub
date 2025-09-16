@@ -9505,3 +9505,43 @@ end
 
 -- Kết thúc khối Event helper
 print("[Event] Khối event helper đã được nạp. Chỉnh EVENT_BOSS_NAME / EVENT_FOLDER_NAME / TELEPORT_COORDS nếu cần.")
+
+-- Tạo cửa sổ mới cho Sự Kiện
+local EventTab = Window:Tab("Sự Kiện")
+
+-- Thêm event Auto Boss Event
+local Section = EventTab:Section("Boss Event")
+
+Section:Toggle("Auto Boss Event", false, function(v)
+    getgenv().AutoBossEvent = v
+    while getgenv().AutoBossEvent do
+        task.wait()
+
+        pcall(function()
+            -- Teleport tới Boss Event
+            local boss = game:GetService("Workspace").Enemies:FindFirstChild("Event Boss")
+            if boss and boss:FindFirstChild("HumanoidRootPart") then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = boss.HumanoidRootPart.CFrame * CFrame.new(0,5,10)
+
+                -- Auto đánh Boss (đơn giản)
+                boss.Humanoid:TakeDamage(10)
+            end
+
+            -- Nhặt Rương
+            for _,v in pairs(game:GetService("Workspace"):GetChildren()) do
+                if v.Name:match("Chest") and v:FindFirstChild("TouchInterest") then
+                    firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, v, 0)
+                    firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, v, 1)
+                end
+            end
+
+            -- Nhặt Trứng
+            for _,v in pairs(game:GetService("Workspace"):GetChildren()) do
+                if v.Name:match("Egg") and v:FindFirstChild("TouchInterest") then
+                    firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, v, 0)
+                    firetouchinterest(game.Players.LocalPlayer.Character.HumanoidRootPart, v, 1)
+                end
+            end
+        end)
+    end
+end)
