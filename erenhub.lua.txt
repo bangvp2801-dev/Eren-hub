@@ -9327,4 +9327,181 @@ v14:Notify({
     Title = "eren hub",
     Content = "Tải Xong",
     Duration = 10
+
 });
+-- =========================
+-- [PASTE CUỐI FILE] Event helper + UI cho tab "Sự Kiện"
+-- =========================
+
+-- CONFIG: chỉnh 3 giá trị này nếu cần
+local EVENT_BOSS_NAME = "RIP"        -- nếu tên boss có chứa từ khoá này sẽ được nhận diện
+local EVENT_FOLDER_NAME = "Bosses"   -- nếu server có folder chứa boss (nếu không có thì để nguyên)
+local TELEPORT_COORDS = Vector3.new(0, 50, 0) -- tọa độ chờ/đi đến nếu chưa thấy boss
+
+-- đảm bảo biến SeaTab trỏ đúng tab "Sự Kiện"
+local SeaTab = (v16 and v16.Sea) or (v15 and v15.Sea) or v16
+if not SeaTab then
+    -- thử tìm trong tất cả các giá trị v16
+    for k,v in pairs(v16 or {}) do
+        if type(v) == "table" and v.AddButton and k:lower():find("sea") then
+            SeaTab = v
+            break
+        end
+    end
+end
+
+-- Nếu vẫn không có SeaTab, in cảnh báo (nhưng code vẫn chạy nếu bạn sửa thủ công)
+if not SeaTab then
+    warn("Chưa tìm được SeaTab. Hãy thay 'SeaTab' bằng biến tab đúng trong script của bạn.")
+end
+
+-- globals toggles
+getgenv().AutoJoinEvent = false
+getgenv().AutoFarmEvent = false
+
+-- helper: tìm boss theo nhiều cách để linh hoạt với server khác nhau
+local function findEventBoss()
+    -- 1) thử folder cố định
+    if workspace:FindFirstChild(EVENT_FOLDER_NAME) then
+        local folder = workspace[EVENT_FOLDER_NAME]
+        for _, obj in pairs(folder:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                local nm = (obj.Name or ""):lower()
+                if nm:find(EVENT_BOSS_NAME:lower()) or nm:find("boss") or nm:find("event") then
+                    return obj
+                end
+            end
+        end
+    end
+
+    -- 2) tìm khắp workspace: model có Humanoid + tên chứa từ khoá
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+            local nm = (obj.Name or ""):lower()
+            if nm:find(EVENT_BOSS_NAME:lower()) or nm:find("boss") or nm:find("event") or nm:find("rip") then
+                return obj
+            end
+        end
+    end
+
+    -- 3) fallback: tìm model có Humanoid mà maxhealth lớn (giả định boss có hp lớn)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            local h = obj:FindFirstChildOfClass("Humanoid")
+            if h and h.MaxHealth and h.MaxHealth >= 1000 then
+                return obj
+            end
+        end
+    end
+
+    return nil
+end
+
+local function teleportTo(pos)
+    local plr = game:GetService("Players").LocalPlayer
+    if not plr then return end
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if hrp and pos then
+        pcall(function()
+            hrp.CFrame = CFrame.new(pos)
+        end)
+    end
+end
+
+-- Nút Teleport test
+if SeaTab and SeaTab.AddButton then
+    SeaTab:AddButton({
+        Title = "Teleport tới Event (Test)",
+        Description = "Dịch chuyển tới TELEPORT_COORDS (chỉnh ở đầu block nếu cần)",
+        Callback = function()
+            teleportTo(TELEPORT_COORDS)
+            print("[Event] Đã teleport tới tọa độ chờ.")
+        end
+    })
+end
+
+-- Toggle Auto Join
+if SeaTab and SeaTab.AddToggle then
+    SeaTab:AddToggle({
+        Title = "Auto Tham Gia Event",
+        Default = false,
+        Callback = function(val)
+            getgenv().AutoJoinEvent = val
+            if val then
+                spawn(function()
+                    while getgenv().AutoJoinEvent do
+                        local boss = findEventBoss()
+                        if boss and boss.PrimaryPart then
+                            local target = boss.PrimaryPart.Position + Vector3.new(0, 5, 0)
+                            teleportTo(target)
+                            print("[Event] Tìm thấy boss, teleport tới boss:", boss.Name)
+                        else
+                            teleportTo(TELEPORT_COORDS)
+                            print("[Event] Chưa thấy boss, di chuyển tới chỗ chờ...")
+                        end
+                        task.wait(2)
+                    end
+                end)
+            end
+        end
+    })
+
+    -- Toggle Auto Farm
+    SeaTab:AddToggle({
+        Title = "Auto Farm Event",
+        Default = false,
+        Callback = function(val)
+            getgenv().AutoFarmEvent = val
+            if val then
+                spawn(function()
+                    while getgenv().AutoFarmEvent do
+                        local boss = findEventBoss()
+                        if boss and boss.PrimaryPart then
+                            teleportTo(boss.PrimaryPart.Position + Vector3.new(0, 5, 0))
+                            -- cố gắng kích tool nếu có
+                            local plr = game:GetService("Players").LocalPlayer
+                            if plr and plr.Character then
+                                local tool = plr.Character:FindFirstChildOfClass("Tool")
+                                if tool then
+                                    pcall(function() tool:Activate() end)
+                                    task.wait(0.15)
+                                end
+                                -- Một số game cần remote -> bạn có thể gửi tên remote để mình hỗ trợ
+                            end
+                        else
+                            task.wait(1)
+                        end
+                        task.wait(0.3)
+                    end
+                end)
+            end
+        end
+    })
+
+    -- Nút debug: in khi có object mới xuất hiện (giúp bạn biết tên boss/folder)
+    SeaTab:AddButton({
+        Title = "Bật/Tắt Debug Spawn",
+        Description = "In tên object mới xuất hiện trong workspace (dùng để tìm tên boss/event)",
+        Callback = function()
+            if not _G._event_debug then
+                _G._event_debug = workspace.DescendantAdded:Connect(function(obj)
+                    pcall(function()
+                        print("[DebugSpawn] ->", obj:GetFullName(), "| name:", obj.Name, "| class:", obj.ClassName)
+                    end)
+                end)
+                print("[Event] Debug Spawn BẬT. Xem output để tìm tên model/part khi event chạy.")
+            else
+                _G._event_debug:Disconnect()
+                _G._event_debug = nil
+                print("[Event] Debug Spawn TẮT.")
+            end
+        end
+    })
+
+else
+    warn("SeaTab chưa tồn tại hoặc giao diện của bạn không hỗ trợ AddToggle/AddButton theo mẫu. Hãy kiểm tra tên biến tab hoặc giao diện library.")
+end
+
+-- Kết thúc khối Event helper
+print("[Event] Khối event helper đã được nạp. Chỉnh EVENT_BOSS_NAME / EVENT_FOLDER_NAME / TELEPORT_COORDS nếu cần.")
